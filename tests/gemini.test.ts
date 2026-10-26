@@ -26,7 +26,7 @@ vi.mock("@google/genai", () => {
 });
 
 import { ApiError } from "@google/genai";
-import { AnalysisError, DEFAULT_GEMINI_MODEL, analyzeTicket, generateChatReply } from "@/lib/gemini";
+import { AnalysisError, DEFAULT_FALLBACK_MODEL, DEFAULT_GEMINI_MODEL, analyzeTicket, generateChatReply } from "@/lib/gemini";
 import { CHAT_SYSTEM_INSTRUCTION } from "@/lib/chat-prompt";
 import { SYSTEM_INSTRUCTION } from "@/lib/prompt";
 
@@ -52,6 +52,7 @@ async function expectAnalysisError(promise: Promise<unknown>, code: string, stat
 beforeEach(() => {
   vi.stubEnv("GEMINI_API_KEY", "test-key-not-real");
   vi.stubEnv("GEMINI_MODEL", "");
+  vi.stubEnv("GEMINI_FALLBACK_MODEL", "");
   generateContent.mockReset();
   constructorArgs.length = 0;
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -187,5 +188,45 @@ describe("generateChatReply", () => {
     vi.stubEnv("GEMINI_API_KEY", "");
     await expectAnalysisError(generateChatReply([{ role: "user", content: "Help me" }]), "MISSING_API_KEY", 503);
     expect(generateContent).not.toHaveBeenCalled();
+  });
+});
+
+describe("fallback model", () => {
+  it("retries on the fallback model when the main model is overloaded (503)", async () => {
+    generateContent
+      .mockRejectedValueOnce(new ApiError({ message: "overloaded", status: 503 }))
+      .mockResolvedValueOnce({ text: JSON.stringify(validAnalysis) });
+    const result = await analyzeTicket(TICKET);
+    expect(result.model).toBe(DEFAULT_FALLBACK_MODEL);
+    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual([DEFAULT_GEMINI_MODEL, DEFAULT_FALLBACK_MODEL]);
+  });
+
+  it("retries on the fallback model after a timeout or invalid output", async () => {
+    const abort = Object.assign(new Error("aborted"), { name: "AbortError" });
+    generateContent.mockRejectedValueOnce(abort).mockResolvedValueOnce({ text: JSON.stringify(validAnalysis) });
+    expect((await analyzeTicket(TICKET)).model).toBe(DEFAULT_FALLBACK_MODEL);
+
+    generateContent.mockResolvedValueOnce({ text: "not json" }).mockResolvedValueOnce({ text: JSON.stringify(validAnalysis) });
+    expect((await analyzeTicket(TICKET)).model).toBe(DEFAULT_FALLBACK_MODEL);
+  });
+
+  it("does not retry when the API key is rejected", async () => {
+    generateContent.mockRejectedValue(new ApiError({ message: "API key not valid", status: 400 }));
+    await expectAnalysisError(analyzeTicket(TICKET), "GEMINI_AUTH_ERROR", 502);
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the main model's error when both models fail", async () => {
+    generateContent
+      .mockRejectedValueOnce(new ApiError({ message: "busy", status: 503 }))
+      .mockRejectedValueOnce(new ApiError({ message: "missing", status: 404 }));
+    await expectAnalysisError(analyzeTicket(TICKET), "GEMINI_ERROR", 502);
+  });
+
+  it("can be disabled with GEMINI_FALLBACK_MODEL=none", async () => {
+    vi.stubEnv("GEMINI_FALLBACK_MODEL", "none");
+    generateContent.mockRejectedValue(new ApiError({ message: "busy", status: 503 }));
+    await expectAnalysisError(analyzeTicket(TICKET), "GEMINI_ERROR", 502);
+    expect(generateContent).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,7 +4,7 @@ This document lists **all the prompts used** to build this project with AI, the 
 
 **At a glance**
 - **AI tools:** Claude Code (coding agent, used to design, build, test and publish) and Google Gemini (the AI inside the product).
-- **Prompts given to Claude Code:** 23, from one detailed master prompt to short follow-ups, all quoted in section 3.4.
+- **Prompts given to Claude Code:** 24, from one detailed master prompt to short follow-ups, all quoted in section 3.4.
 - **Prompts inside the app:** a triage prompt (section 4) and a chatbot prompt (section 4b), both refined through testing (section 5).
 - **How the project evolved:** a ticket-triage tool → a Gokul Infocare website with an AI chatbot → AI-created support tickets with an admin board, email resolution and secure admin access.
 
@@ -15,7 +15,7 @@ Help a support team handle customer issues faster with AI, as a concept for Goku
 - If the AI can't solve it, the chatbot **creates a support ticket** that Gemini has already triaged: category, priority, sentiment, summary, recommended action and a draft reply.
 - **Admins** (who sign in by typing a secret code into the chatbot) work through the tickets on a New / In progress / Solved board. When a ticket is solved, the customer is **emailed the resolution**.
 
-The original core, kept as the "Triage tool", analyses any pasted ticket and returns those seven fields as validated structured JSON.
+The original core, a triage engine that turns any ticket text into those seven fields as validated structured JSON, now runs automatically on every ticket the chatbot creates. Its stand-alone "Triage tool" page was removed in P24 to keep the admin area focused.
 
 ## 2. AI tools used and their roles
 
@@ -112,6 +112,8 @@ Every prompt given to Claude Code, in order, quoted exactly as typed (spelling u
 | P21a | Choice: "i need to remove the unwanted files for the reviewre" | Kept this document, because the assessment requires it. |
 | P22 | "its still there" [screenshot of GitHub] · "sorry for that i deleted the existing repo and created a new repo https://github.com/Sakthi0208-code/Gokul-infotech.git make a care full commit and push here" | Published the cleaned project to the new repository after a full-history secret scan. |
 | P23 | "is the prompt document required for the assesment ?" · "analise and push the essentials" [the assessment brief PDF] | Checked the project against the brief: completed this prompt log and added a reviewer guide to the README. |
+| P24 | "i changed admin access code to [code removed for security] mention them in readme if needed" · "how to resolve the error and remove the Triage tool it looks like useless" [screenshots of Vercel logs (Gemini 503, tickets-create error) and the live site] | Kept the admin code out of the public README. Diagnosed both live errors: a temporary Gemini overload (fixed with a backup model, refinement 20) and Vercel's read-only file system (fixed with Supabase storage, refinement 21). Removed the Triage tool page (refinement 22). |
+| P24a | Choice: "create a new supabase project and with new id not grevya" | The connected Supabase account belongs to another organisation, so the author creates a new project in their own account using `supabase/schema.sql`. |
 
 **How the redesign request was refined.** Claude Code reviewed the Gokul Infocare site first. It recommended against copying the site, because the site carries the company's logo and client trademarks, and against deleting the project, because the triage engine is the assessment's core requirement. The author chose:
 - an **original homepage inspired by** the company's services, labelled as a concept demo,
@@ -266,10 +268,13 @@ Rows 1 to 9 were design decisions made while writing the code, before any live c
 | 17 | Ticket status checks bypass the AI, and the chat prompt forbids inventing ticket numbers | Status must come from real records. A language model could otherwise make up a plausible but false status. |
 | 18 | `AdminGate` calls `await connection()` before checking the session | The session check reads the current time (for expiry). With Cache Components, Next.js must be told the page is per-request, or dev mode shows a "Blocking Route: unstable value Date.now()" error. This was found by the author in the browser. |
 | 19 | Common issues menu in the chatbot | Customers often don't know how to describe a problem. One-click options give the AI a clear starting point, and it still asks follow-up questions. |
+| 20 | Backup Gemini model with retry (2026-10-26) | On the live site Gemini returned 503 "overloaded" and one request timed out. Each request now tries the main model for 15 s, then retries once on `gemini-3.1-flash-lite` (free-tier quotas are per model). In a live check the main model timed out while the backup answered in 4.5 s. A bad API key is never retried. |
+| 21 | Tickets stored in Supabase on Vercel (2026-10-26) | Vercel's file system is read-only, so saving tickets to a file failed with a 500 error. Tickets now go to a locked-down Supabase table (Row Level Security, server-only secret key). Storage failures show a clear message instead of "unexpected error". |
+| 22 | Removed the stand-alone Triage tool (2026-10-26) | The same triage engine already analyses every chatbot ticket automatically, so the separate page added little for admins. |
 
 ### Prompt evaluation (live, 2026-10-26, `gemini-3.5-flash-lite`)
 
-Each ticket was sent through `/api/analyze` with real Gemini calls.
+Each ticket was sent through the triage endpoint (`/api/analyze`, since removed; the same triage prompt now runs on every chatbot ticket) with real Gemini calls.
 
 | Ticket | Expected | Actual (category / priority / sentiment) | Result |
 | --- | --- | --- | --- |
@@ -308,6 +313,7 @@ Results:
 - 2026-10-25, after adding the chatbot: 8 test files, **93 passed**, 0 failed.
 - 2026-10-25, after the landing page and admin access: 9 test files, **112 passed**, 0 failed. New: `tests/admin-auth.test.ts` (code check, token signing, expiry, tampering, login and lockout, logout, proxy redirect, code never forwarded to the chat AI) and admin-mode UI tests in `tests/chat-widget.test.tsx`.
 - 2026-10-25, after replacing emails with tickets: 10 test files, **123 passed**, 0 failed. New: `tests/tickets.test.ts` (storage, unique IDs, concurrent creation, ordering, create/status/list/update routes, admin-only access, resolution note required, public status hides transcript and contact details) and `tests/tickets-board.test.tsx` (load, filter, resolve, use AI reply, expired session).
+- 2026-10-26, after removing the Triage tool and adding the backup model and Supabase storage: 10 test files, **121 passed**, 0 failed. New tests: fallback on 503, timeout and invalid output; no retry on a bad key; fallback can be turned off; Supabase create/read/list/update (with a fake Supabase API); storage failures return a safe 503. Fewer tests than before because the Triage tool's own tests were removed with it.
 - 2026-10-25, after the board, chat topics and the /admin fix: 12 test files, **144 passed**, 0 failed. The board tests cover columns, search, priority filter, Start, drag to Solved (opens the note instead of solving), solve with email result, and Esc to close. The chat tests cover the topic grid, "More issues", and the menu button. The fix was checked on the dev server: `/admin` loads with no error overlay.
 - 2026-10-25, after resolution emails and the admin lock: 12 test files, **139 passed**, 0 failed. New: `tests/mailer.test.ts` (config, template, HTML escaping, send/skip/fail, password never in messages, email on resolve exactly once, failure still resolves, re-send, admin-only) and `tests/admin-gate.test.tsx` (no, forged, expired or unconfigured session → redirect; valid → render).
 - 2026-10-25: browser check of the admin lock: direct `/admin`, a forged cookie, and `/admin` after Sign out all redirect to the chat login. A wrong code is rejected. The right code opens the dashboard with an HttpOnly, SameSite=Strict session cookie. `GET /api/tickets` without a session returns 401. Resolving a ticket without SMTP settings showed "Email is not set up…". **A real email has not been sent yet** (needs SMTP credentials).

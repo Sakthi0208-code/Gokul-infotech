@@ -1,10 +1,10 @@
 // Helpers shared by the API route handlers.
-import type { AnalyzeErrorResponse, ApiErrorCode } from "@/types/ticket";
+import type { ApiErrorCode, ApiErrorResponse } from "@/types/ticket";
 import { AnalysisError } from "./gemini";
 import { checkRateLimit, clientKey } from "./rate-limit";
 
 export function errorResponse(code: ApiErrorCode, message: string, status: number, headers?: HeadersInit) {
-  const body: AnalyzeErrorResponse = { error: { code, message } };
+  const body: ApiErrorResponse = { error: { code, message } };
   return Response.json(body, { status, headers });
 }
 

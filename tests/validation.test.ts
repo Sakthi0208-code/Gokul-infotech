@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { MAX_TICKET_LENGTH, parseModelOutput, validateTicketText } from "@/lib/validation";
+import { parseModelOutput } from "@/lib/validation";
 
 const validAnalysis = {
   category: "Account Access",
@@ -11,43 +11,6 @@ const validAnalysis = {
   recommended_action: "Investigate the password reset flow for this account.",
   priority_reason: "The customer is fully blocked from using the service.",
 };
-
-describe("validateTicketText", () => {
-  it("rejects empty input", () => {
-    expect(validateTicketText("")).toEqual({ ok: false, message: expect.stringMatching(/enter/i) });
-  });
-
-  it("rejects whitespace-only input", () => {
-    const result = validateTicketText("   \n\t   ");
-    expect(result.ok).toBe(false);
-  });
-
-  it("rejects non-string input", () => {
-    expect(validateTicketText(42).ok).toBe(false);
-    expect(validateTicketText(undefined).ok).toBe(false);
-  });
-
-  it("rejects input that is too short", () => {
-    expect(validateTicketText("help").ok).toBe(false);
-  });
-
-  it("rejects input longer than the maximum", () => {
-    const result = validateTicketText("a".repeat(MAX_TICKET_LENGTH + 1));
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.message).toMatch(/too long/i);
-  });
-
-  it("accepts input exactly at the maximum", () => {
-    expect(validateTicketText("a".repeat(MAX_TICKET_LENGTH)).ok).toBe(true);
-  });
-
-  it("trims whitespace from valid input", () => {
-    expect(validateTicketText("   My invoice is wrong this month.  ")).toEqual({
-      ok: true,
-      value: "My invoice is wrong this month.",
-    });
-  });
-});
 
 describe("parseModelOutput", () => {
   it("accepts a valid analysis", () => {

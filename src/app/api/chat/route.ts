@@ -4,6 +4,9 @@ import { generateChatReply } from "@/lib/gemini";
 import { chatRequestSchema, validateRequest } from "@/lib/validation";
 import type { ChatSuccessResponse } from "@/types/chat";
 
+// Allow time for an AI retry on the fallback model (Vercel reads this limit).
+export const maxDuration = 60;
+
 const MAX_BODY_BYTES = 40_000;
 
 export async function POST(request: Request) {

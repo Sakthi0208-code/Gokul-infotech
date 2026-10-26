@@ -12,10 +12,17 @@ import {
 import { RESPONSE_JSON_SCHEMA, SYSTEM_INSTRUCTION, buildUserPrompt } from "./prompt";
 import { parseChatReply, parseModelOutput } from "./validation";
 
-// Free-tier model, checked against https://ai.google.dev/gemini-api/docs/pricing
-// and tested live on 2026-10-25. Override it with GEMINI_MODEL in .env.local.
+// Free-tier models, checked against https://ai.google.dev/gemini-api/docs/pricing.
+// The main model was tested live on 2026-10-25. If it is busy or fails, the
+// request is tried once more on the fallback model (free-tier quotas are per
+// model, so this also helps when one model's limit is reached).
+// Override with GEMINI_MODEL / GEMINI_FALLBACK_MODEL (set it to "none" to disable).
 export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
-const GEMINI_TIMEOUT_MS = 30_000;
+export const DEFAULT_FALLBACK_MODEL = "gemini-3.1-flash-lite";
+// Both attempts together must fit inside the 60-second limit of the API routes.
+// The main model normally answers in 3-8 s, so it gets 15 s before we switch.
+const MAIN_TIMEOUT_MS = 15_000;
+const FALLBACK_TIMEOUT_MS = 25_000;
 
 /** An error that is safe to show to the user. `message` never contains secrets. */
 export class AnalysisError extends Error {
@@ -32,8 +39,13 @@ export class AnalysisError extends Error {
 function getGeminiConfig() {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   const model = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
-  return { apiKey, model };
+  const fallbackSetting = process.env.GEMINI_FALLBACK_MODEL?.trim() || DEFAULT_FALLBACK_MODEL;
+  const fallback = fallbackSetting.toLowerCase() === "none" || fallbackSetting === model ? undefined : fallbackSetting;
+  return { apiKey, model, fallback };
 }
+
+// Problems another attempt cannot fix: retrying would only waste time.
+const NOT_RETRYABLE = new Set<ApiErrorCode>(["MISSING_API_KEY", "GEMINI_AUTH_ERROR"]);
 
 type Parser<T> = (raw: string | undefined) => { ok: true; value: T } | { ok: false; reason: string };
 
@@ -46,10 +58,10 @@ interface StructuredRequest<T> {
 }
 
 // Shared by every feature: sends a request that must come back as JSON,
-// enforces the timeout, validates the result, and converts every failure
-// into an AnalysisError with a safe message.
+// validates it, and retries once on the fallback model if the main model
+// fails for a temporary reason. Every failure becomes a safe AnalysisError.
 async function generateStructured<T>(request: StructuredRequest<T>): Promise<{ value: T; model: string }> {
-  const { apiKey, model } = getGeminiConfig();
+  const { apiKey, model, fallback } = getGeminiConfig();
   if (!apiKey) {
     throw new AnalysisError(
       "MISSING_API_KEY",
@@ -59,12 +71,32 @@ async function generateStructured<T>(request: StructuredRequest<T>): Promise<{ v
   }
 
   const ai = new GoogleGenAI({ apiKey });
+  try {
+    return await attempt(ai, apiKey, model, request, MAIN_TIMEOUT_MS);
+  } catch (error) {
+    if (!(error instanceof AnalysisError) || NOT_RETRYABLE.has(error.code) || !fallback) throw error;
+    console.warn(`[gemini] Main model failed (${error.code}); trying fallback model`);
+    try {
+      return await attempt(ai, apiKey, fallback, request, FALLBACK_TIMEOUT_MS);
+    } catch {
+      throw error; // report the main model's problem, which is the most useful one
+    }
+  }
+}
+
+async function attempt<T>(
+  ai: GoogleGenAI,
+  apiKey: string,
+  model: string,
+  request: StructuredRequest<T>,
+  timeoutMs: number,
+): Promise<{ value: T; model: string }> {
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, GEMINI_TIMEOUT_MS);
+  }, timeoutMs);
 
   let rawText: string | undefined;
   try {
@@ -81,7 +113,7 @@ async function generateStructured<T>(request: StructuredRequest<T>): Promise<{ v
     });
     rawText = response.text;
   } catch (error) {
-    throw toAnalysisError(error, model, timedOut, apiKey);
+    throw toAnalysisError(error, model, timedOut, apiKey, timeoutMs);
   } finally {
     clearTimeout(timer);
   }
@@ -99,7 +131,7 @@ async function generateStructured<T>(request: StructuredRequest<T>): Promise<{ v
   return { value: parsed.value, model };
 }
 
-/** Triage one support ticket (used by /api/analyze and when the chatbot creates a ticket in /api/tickets). */
+/** Triage one support ticket (used when the chatbot creates a ticket in /api/tickets). */
 export async function analyzeTicket(ticket: string): Promise<{ analysis: TicketAnalysis; model: string }> {
   const { value, model } = await generateStructured({
     contents: buildUserPrompt(ticket),
@@ -124,12 +156,12 @@ export async function generateChatReply(messages: ChatMessage[]): Promise<{ repl
 }
 
 // Maps SDK and network errors to messages that are safe for the client.
-function toAnalysisError(error: unknown, model: string, timedOut: boolean, apiKey: string): AnalysisError {
+function toAnalysisError(error: unknown, model: string, timedOut: boolean, apiKey: string, timeoutMs: number): AnalysisError {
   if (timedOut || (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"))) {
     return new AnalysisError(
       "TIMEOUT",
       504,
-      `Gemini did not respond within ${GEMINI_TIMEOUT_MS / 1000} seconds. Please try again, or set GEMINI_MODEL to a faster model.`,
+      `Gemini did not respond within ${timeoutMs / 1000} seconds. Please try again in a moment.`,
     );
   }
 

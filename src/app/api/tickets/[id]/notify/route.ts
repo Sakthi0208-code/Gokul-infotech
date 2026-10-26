@@ -3,6 +3,9 @@ import { errorResponse, handleRouteError, rateLimitResponse } from "@/lib/api";
 import { notifyCustomer } from "@/lib/ticket-notify";
 import { TICKET_ID_PATTERN, getTicket } from "@/lib/ticket-store";
 
+// Allow time for an AI retry on the fallback model (Vercel reads this limit).
+export const maxDuration = 60;
+
 type Context = { params: Promise<{ id: string }> };
 
 // Admin side: send (or re-send) the resolution email for a resolved ticket.

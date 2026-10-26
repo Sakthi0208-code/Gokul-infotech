@@ -27,7 +27,7 @@ A redesigned, animated landing page for Gokul Infocare with a Google Gemini supp
    - **Customer view:** click **Need help?**, pick a common issue, then choose "No, still not working" twice and create a ticket.
    - **Admin view:** in the chat, type `admin` and enter the `ADMIN_ACCESS_CODE` you chose. The dashboard at `/admin` shows the ticket.
    - Resolution emails are optional (SMTP settings in `.env.local`). Without them, the app clearly says email isn't set up.
-4. **Run the tests** (no API key needed; Gemini and email are mocked): `npm test` runs 144 tests.
+4. **Run the tests** (no API key needed; Gemini and email are mocked): `npm test` runs 121 tests.
 
 ## What it does
 
@@ -36,7 +36,7 @@ A redesigned, animated landing page for Gokul Infocare with a Google Gemini supp
 | **Landing page** | `/` | Animated homepage: hero, key facts, 8 services, solution tabs (parking sensors, fleet tracking, ERP on Map), AI support section, accreditations, client ticker, recruitment and contact. |
 | **Support chatbot** | "Need help?" button on `/` | The customer describes a problem and the AI gives step-by-step fixes on screen. If that doesn't work, it **creates a support ticket** (for example `GI-7K3M9Q`) with AI priority, category, summary and the full conversation. The customer can type `status GI-7K3M9Q` later to see progress and the resolution. |
 | **Admin login** | In the chatbot | Type `admin`, then enter the secret access code in a masked box. The server checks it and signs the admin in. |
-| **Assistance dashboard** | `/admin` (admins only) | **Support tickets** tab: every ticket from the chatbot with counts, filters, AI triage, transcript and actions (Start working → Mark resolved with a note for the customer). **Triage tool** tab: the original assessment tool. Paste any ticket and Gemini returns its category, priority, sentiment, summary, suggested reply, recommended action and priority reason. |
+| **Assistance dashboard** | `/admin` (admins only) | Every ticket from the chatbot on a New / In progress / Solved board. Each ticket arrives already analysed by Gemini: category, priority, sentiment, summary, priority reason, recommended action and a draft reply. |
 
 ## Features
 
@@ -64,7 +64,7 @@ A redesigned, animated landing page for Gokul Infocare with a Google Gemini supp
 - `admin` (or `/admin`, `admin login`) switches the chat to a password box. The code is sent only to `/api/admin/login`, never to Gemini, and never shown in the chat.
 - The server compares codes in constant time and sets a signed, HttpOnly, SameSite=Strict **browser-session** cookie (deleted when the browser closes). The signed token inside also expires after 4 hours.
 - Login is limited to 5 attempts per 15 minutes per client.
-- **Three locks on `/admin`:** (1) `src/proxy.ts` redirects requests without a valid session to `/?admin=login`, which opens the chat in login mode; (2) the page itself checks the signed session on the server before rendering anything (`AdminGate`); (3) every admin API (`/api/tickets` list and update, `/api/tickets/[id]/notify`, `/api/analyze`) checks the session. Typing `/admin` in the address bar never shows the dashboard. The only way in is the code in the chatbot.
+- **Three locks on `/admin`:** (1) `src/proxy.ts` redirects requests without a valid session to `/?admin=login`, which opens the chat in login mode; (2) the page itself checks the signed session on the server before rendering anything (`AdminGate`); (3) every admin API (`/api/tickets` list and update, `/api/tickets/[id]/notify`) checks the session. Typing `/admin` in the address bar never shows the dashboard. The only way in is the code in the chatbot.
 - If someone pastes the code as a normal chat message, the server refuses it instead of forwarding it to Gemini.
 
 **Shared**
@@ -72,14 +72,15 @@ A redesigned, animated landing page for Gokul Infocare with a Google Gemini supp
 - Structured JSON output (JSON Schema), validated again with Zod.
 - Clear handling of a missing key, invalid key, unknown model, rate limits, timeouts and malformed output.
 - Prompt-injection protection: customer text is wrapped in delimiter tags and treated as untrusted data.
-- 144 automated tests with Gemini and email mocked.
+- **Resilient AI calls:** if the main Gemini model is busy (for example a 503 "overloaded" error), times out or returns a broken answer, the request is retried once on a backup free model.
+- 121 automated tests with Gemini, email and the database mocked.
 
 ## Architecture
 
 ```
 Landing page "/"  ── chat widget
    │  POST /api/chat {messages}          → gemini.generateChatReply → {message, steps, status}
-   │  POST /api/tickets {messages}       → transcript → gemini.analyzeTicket → saved ticket (GI-XXXXXX)
+   │  POST /api/tickets {messages}       → transcript → gemini.analyzeTicket → saved ticket (GI-XXXXXX, Supabase or local file)
    │  "status GI-XXXXXX" → GET /api/tickets/GI-XXXXXX → status + resolution
    │  "admin" → POST /api/admin/login {code} → Set-Cookie (signed session)
    ▼
@@ -87,7 +88,6 @@ proxy.ts (runs before /admin): no valid session → redirect to /?admin=login
    ▼
 /admin dashboard
    │  GET /api/tickets, PATCH /api/tickets/[id] (session required) → list, update status and resolution
-   │  POST /api/analyze {ticket} (session required) → gemini.analyzeTicket
    │  POST /api/admin/logout → clears cookie
 ```
 
@@ -102,28 +102,28 @@ src/
     api/chat/route.ts         Chatbot
     api/tickets/route.ts      Create ticket (public), list tickets (admin)
     api/tickets/[id]/route.ts Ticket status (public), update ticket (admin)
-    api/analyze/route.ts      Ticket triage (admin only)
     api/admin/login|logout    Admin session
     layout.tsx, globals.css   Fonts, theme, animation keyframes
   components/
     landing/                  Nav, hero, sections, solution tabs, logo
     chat/                     Chat widget and ticket panel
-    admin/                    Dashboard tabs, tickets board (columns), ticket detail panel, AdminGate (server-side session check)
+    admin/                    Tickets board (columns), ticket detail panel, AdminGate (server-side session check)
     motion.tsx                Scroll reveal and count-up helpers
-    admin-header.tsx, ticket-assistant.tsx, ticket-form.tsx, analysis-result.tsx, priority-badge.tsx
+    admin-header.tsx, priority-badge.tsx
   lib/
     gemini.ts                 All Gemini calls, timeout, safe error mapping
     prompt.ts, chat-prompt.ts System instructions and JSON Schemas
     admin-auth.ts             Access code check and signed session cookies
     validation.ts             Zod schemas for requests and AI output
-    ticket-store.ts           Saves tickets (JSON file; swap for a database when deploying)
+    ticket-store.ts           Saves tickets: Supabase when configured, otherwise a local JSON file
     mailer.ts                 Resolution email (SMTP via nodemailer)
     ticket-notify.ts          Sends the email and records the result on the ticket
     conversation.ts           Turns a chat into one ticket text for triage
     site-content.ts           Landing page content (from gokulinfocare.com)
     chat-topics.ts            Common issues shown in the chatbot
-    rate-limit.ts, client-api.ts, sample-tickets.ts
-  types/ticket.ts, types/chat.ts
+    rate-limit.ts, client-api.ts
+  types/ticket.ts, types/chat.ts, types/support-ticket.ts
+supabase/schema.sql           Database table for tickets (run once in Supabase)
 tests/                        Vitest tests
 ```
 
@@ -149,11 +149,13 @@ Fill in `.env.local`:
 | --- | --- | --- |
 | `GEMINI_API_KEY` | Yes | From [Google AI Studio](https://aistudio.google.com/apikey). Server-only. |
 | `GEMINI_MODEL` | No | Defaults to `gemini-3.5-flash-lite`. |
+| `GEMINI_FALLBACK_MODEL` | No | Backup model tried once if the main one fails. Defaults to `gemini-3.1-flash-lite`; `none` turns it off. |
 | `ADMIN_ACCESS_CODE` | For admin access | The secret code typed into the chatbot. Make it long, for example `GI-7f3k-Quartz-2026`. Leave empty to disable admin access. |
 | `ADMIN_SESSION_SECRET` | Recommended | A long random string for signing sessions. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | For resolution emails | SMTP server login. For Gmail: `smtp.gmail.com`, `465`, your Gmail address, and an **app password** (Google Account → Security → 2-Step Verification → App passwords). Never use your normal password. |
 | `MAIL_FROM`, `MAIL_REPLY_TO` | No | Sender and reply-to. Default: `Gokul Infocare Support (demo) <SMTP_USER>`. |
-| `TICKETS_FILE` | No | Where tickets are saved. Defaults to `data/tickets.json` (git-ignored). |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | **On Vercel** | Ticket storage in Supabase (see Deployment). Without them, tickets are saved to a local file, which is fine on your own computer. |
+| `TICKETS_FILE` | No | Local ticket file. Defaults to `data/tickets.json` (git-ignored). |
 
 Restart `npm run dev` after changing `.env.local`.
 
@@ -182,7 +184,6 @@ npm start           # serve the production build
 | `POST /api/tickets/[id]/notify` | Admin session | – | `{ ticket, email }` (re-sends the resolution email) |
 | `POST /api/admin/login` | – | `{ code }` | `{ ok, redirectTo }` plus the session cookie |
 | `POST /api/admin/logout` | – | – | Clears the cookie |
-| `POST /api/analyze` | Admin session | `{ ticket }` (10 to 5,000 characters) | `{ analysis, model }` |
 
 Errors use `{ error: { code, message } }`:
 
@@ -194,7 +195,7 @@ Errors use `{ error: { code, message } }`:
 | 413 | `PAYLOAD_TOO_LARGE` |
 | 429 | `RATE_LIMITED`, `GEMINI_RATE_LIMITED` |
 | 502 | `GEMINI_AUTH_ERROR`, `MODEL_UNAVAILABLE`, `GEMINI_ERROR`, `INVALID_MODEL_OUTPUT` |
-| 503 | `MISSING_API_KEY`, `ADMIN_NOT_CONFIGURED` |
+| 503 | `MISSING_API_KEY`, `ADMIN_NOT_CONFIGURED`, `STORAGE_ERROR` |
 | 504 | `TIMEOUT` |
 | 500 | `INTERNAL_ERROR` |
 
@@ -208,16 +209,21 @@ Errors use `{ error: { code, message } }`:
 
 ## Deployment (Vercel)
 
-1. Push to GitHub (check that `git status` does not list `.env.local`).
-2. Import the repository at <https://vercel.com/new>.
-3. Add `GEMINI_API_KEY`, `ADMIN_ACCESS_CODE` and `ADMIN_SESSION_SECRET` (and optionally `GEMINI_MODEL`) under **Settings → Environment Variables**.
-4. **Important:** Vercel does not keep files between requests, so tickets saved to `data/tickets.json` will disappear. Before deploying, replace `src/lib/ticket-store.ts` with a hosted database (for example Supabase or Vercel Postgres). The rest of the app only calls its four functions.
-5. Deploy and test the chatbot, ticket creation, the admin login and `/admin`.
+Vercel can't keep files, so tickets must be stored in Supabase (free plan is enough).
+
+1. **Supabase:** create a project at <https://supabase.com>. Open **SQL Editor → New query**, paste [supabase/schema.sql](supabase/schema.sql) and click **Run**. This creates a locked-down `support_tickets` table.
+2. In Supabase, open **Project Settings → API Keys**. Copy the **Project URL** and the **secret (service_role) key**.
+3. **Vercel:** import the repository at <https://vercel.com/new>. Under **Settings → Environment Variables**, add:
+   - required: `GEMINI_API_KEY`, `ADMIN_ACCESS_CODE`, `ADMIN_SESSION_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+   - optional: `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, and the `SMTP_*` / `MAIL_*` settings for resolution emails
+4. **Redeploy** (environment changes apply only to new deployments). Then test the chatbot, ticket creation, the admin login and `/admin`.
+
+API routes allow up to 60 seconds (`maxDuration`), so there is time to retry on the backup Gemini model.
 
 ## Known limitations
 
 - AI answers can be wrong, and troubleshooting is general because the bot has no access to real documentation or accounts.
-- Tickets are stored in a local JSON file: fine for local demos and a single server, but not for serverless hosting or many servers (use a database).
+- Without Supabase, tickets are stored in a local JSON file: fine for local demos, but not for serverless hosting. If storage fails, customers see a clear "tickets can't be saved right now" message.
 - Resolution emails need SMTP settings. Gmail's free limit is about 500 emails a day. Only send to test addresses: the emails are clearly marked as coming from a concept demo, not from Gokul Infocare.
 - There is no email when a ticket is created or moved to In progress, only when it is resolved.
 - Anyone who knows a ticket number can see its status and resolution note (never the transcript or contact details). Ticket numbers are random (about 1 billion combinations) and status checks are rate-limited.

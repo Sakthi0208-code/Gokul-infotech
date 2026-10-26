@@ -46,18 +46,13 @@ export type ApiErrorCode =
   | "NOT_FOUND"
   | "INVALID_ACCESS_CODE"
   | "ADMIN_NOT_CONFIGURED"
+  | "STORAGE_ERROR"
   | "INTERNAL_ERROR";
 
-export interface AnalyzeSuccessResponse {
-  analysis: TicketAnalysis;
-  model: string;
-}
-
-export interface AnalyzeErrorResponse {
+/** Error body returned by every API route. */
+export interface ApiErrorResponse {
   error: {
     code: ApiErrorCode;
     message: string;
   };
 }
-
-export type AnalyzeResponse = AnalyzeSuccessResponse | AnalyzeErrorResponse;

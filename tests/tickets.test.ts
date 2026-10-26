@@ -230,3 +230,86 @@ describe("admin ticket routes", () => {
     expect((await patchTicket(req(`/api/tickets/${t.id}`, "PATCH", {}, admin()), ctx(t.id))).status).toBe(400);
   });
 });
+
+describe("storage errors", () => {
+  it("returns a clear 503 instead of crashing when tickets can't be saved", async () => {
+    // A path inside a regular file can never be created, like Vercel's read-only folder.
+    const blocker = path.join(dir, "not-a-folder");
+    await import("node:fs/promises").then((fs) => fs.writeFile(blocker, "x"));
+    vi.stubEnv("TICKETS_FILE", path.join(blocker, "tickets.json"));
+    analyzeTicket.mockResolvedValue({ analysis, model: "gemini-test" });
+
+    const res = await createRoute(req("/api/tickets", "POST", { messages: conversation }));
+    const body = await res.json();
+    expect(res.status).toBe(503);
+    expect(body.error.code).toBe("STORAGE_ERROR");
+    expect(body.error.message).toMatch(/can't be saved/);
+  });
+});
+
+describe("Supabase storage", () => {
+  type Row = { id: string; data: Record<string, unknown>; created_at: string; updated_at: string };
+  let rows: Row[];
+  const calls: { method: string; url: string; headers: Record<string, string> }[] = [];
+
+  beforeEach(() => {
+    rows = [];
+    calls.length = 0;
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co/");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service-role-test-key");
+    // A tiny fake of the Supabase REST API for the support_tickets table.
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      const u = new URL(url);
+      const method = init.method ?? "GET";
+      calls.push({ method, url, headers: init.headers as Record<string, string> });
+      const idFilter = u.searchParams.get("id")?.replace(/^eq\./, "");
+      if (method === "POST") {
+        const row = JSON.parse(String(init.body)) as Row;
+        if (rows.some((r) => r.id === row.id)) return new Response("{}", { status: 409 });
+        rows.push(row);
+        return new Response(null, { status: 201 });
+      }
+      if (method === "PATCH") {
+        const row = rows.find((r) => r.id === idFilter);
+        if (row) Object.assign(row, JSON.parse(String(init.body)));
+        return new Response(null, { status: 204 });
+      }
+      const found = idFilter ? rows.filter((r) => r.id === idFilter) : [...rows];
+      return Response.json(found.map((r) => ({ data: r.data })));
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("creates, reads, lists and updates tickets through the Supabase REST API", async () => {
+    const t = await createTicket(newTicketInput());
+    expect(rows).toHaveLength(1);
+    expect(calls[0].url).toBe("https://example.supabase.co/rest/v1/support_tickets");
+    expect(calls[0].headers.apikey).toBe("service-role-test-key");
+    expect(calls[0].headers.Authorization).toBe("Bearer service-role-test-key");
+
+    expect(await getTicket(t.id.toLowerCase())).toMatchObject({ id: t.id, status: "open" });
+    expect(await listTickets()).toHaveLength(1);
+
+    const updated = await updateTicket(t.id, { status: "resolved", resolution: "Fixed." });
+    expect(updated).toMatchObject({ status: "resolved", resolution: "Fixed." });
+    expect(rows[0].data).toMatchObject({ status: "resolved", resolution: "Fixed." });
+
+    // Nothing was written to the local file
+    await expect(readFile(path.join(dir, "tickets.json"), "utf8")).rejects.toThrow();
+  });
+
+  it("returns undefined for unknown tickets", async () => {
+    expect(await getTicket("GI-ZZZZZZ")).toBeUndefined();
+    expect(await updateTicket("GI-ZZZZZZ", { status: "resolved" })).toBeUndefined();
+  });
+
+  it("turns Supabase failures into a safe storage error", async () => {
+    vi.stubGlobal("fetch", async () => new Response("secret details", { status: 500 }));
+    const error = await listTickets().catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: "STORAGE_ERROR", status: 503 });
+    expect(String((error as Error).message)).not.toContain("secret details");
+  });
+});

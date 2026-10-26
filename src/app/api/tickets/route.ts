@@ -6,6 +6,9 @@ import { createTicket, listTickets } from "@/lib/ticket-store";
 import { createTicketSchema, validateRequest } from "@/lib/validation";
 import { toPublicStatus } from "@/types/support-ticket";
 
+// Allow time for an AI retry on the fallback model (Vercel reads this limit).
+export const maxDuration = 60;
+
 const MAX_BODY_BYTES = 40_000;
 
 // Customer side: the chatbot could not solve the issue, so create a ticket.

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AdminHeader } from "@/components/admin-header";
-import { AdminDashboard } from "@/components/admin/admin-dashboard";
 import { AdminGate } from "@/components/admin/admin-gate";
+import { TicketsBoard } from "@/components/admin/tickets-board";
 
 export const metadata: Metadata = {
   title: "Assistance Dashboard · Gokul Infocare (concept)",
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 // Three locks protect the dashboard:
 // 1. src/proxy.ts redirects requests without a valid session before the page runs.
 // 2. <AdminGate> checks the signed session again on the server before rendering.
-// 3. Every admin API route (/api/tickets, /api/analyze, ...) checks the session.
+// 3. Every admin API route (ticket list, update, email) checks the session.
 // The only way to get a session is the access code typed into the chatbot.
 export default function AdminPage() {
   return (
@@ -29,17 +29,16 @@ export default function AdminPage() {
             </div>
             <div className="mx-auto max-w-6xl animate-scale-in px-4 sm:px-6">
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-300">Assistance dashboard</p>
-              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Support tickets &amp; AI triage</h1>
+              <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Support tickets</h1>
               <p className="mt-3 max-w-2xl leading-relaxed text-slate-300">
-                Tickets raised by the chatbot appear here with AI triage. Work on them and write a resolution: the customer
-                is emailed the note and can also see it by checking their ticket number. Use the triage tool to analyse any
-                other ticket.
+                Tickets raised by the chatbot arrive here already analysed by AI: category, priority, summary, recommended
+                action and a draft reply. Move them from New to Solved, and the customer is emailed your resolution note.
               </p>
             </div>
           </section>
 
           <main className="relative z-10 mx-auto -mt-8 w-full max-w-6xl flex-1 px-4 pb-16 sm:px-6">
-            <AdminDashboard />
+            <TicketsBoard />
           </main>
 
           <footer className="border-t border-slate-200 bg-white">

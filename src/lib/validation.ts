@@ -3,42 +3,8 @@ import { CHAT_STATUSES, type ChatReply } from "@/types/chat";
 import { TICKET_STATUSES } from "@/types/support-ticket";
 import { CATEGORIES, PRIORITIES, SENTIMENTS, type TicketAnalysis } from "@/types/ticket";
 
+// Longest text sent to the triage AI (a chat transcript is trimmed to fit).
 export const MAX_TICKET_LENGTH = 5000;
-const MIN_TICKET_LENGTH = 10;
-
-// ---------- Incoming ticket text (used by both the form and the API) ----------
-
-export type TicketTextResult =
-  | { ok: true; value: string }
-  | { ok: false; message: string };
-
-export function validateTicketText(input: unknown): TicketTextResult {
-  if (typeof input !== "string") {
-    return { ok: false, message: "Ticket text must be a string." };
-  }
-  const value = input.trim();
-  if (value.length === 0) {
-    return { ok: false, message: "Please enter the customer's message before analyzing." };
-  }
-  if (value.length < MIN_TICKET_LENGTH) {
-    return {
-      ok: false,
-      message: `The ticket is too short to analyze. Please enter at least ${MIN_TICKET_LENGTH} characters.`,
-    };
-  }
-  if (value.length > MAX_TICKET_LENGTH) {
-    return {
-      ok: false,
-      message: `The ticket is too long (${value.length.toLocaleString()} characters). The limit is ${MAX_TICKET_LENGTH.toLocaleString()}.`,
-    };
-  }
-  return { ok: true, value };
-}
-
-// The API body must look like: { "ticket": "..." }
-export const analyzeRequestSchema = z.object({
-  ticket: z.string(),
-});
 
 // ---------- Model output ----------
 

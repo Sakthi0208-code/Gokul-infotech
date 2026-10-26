@@ -5,6 +5,9 @@ import { TICKET_ID_PATTERN, getTicket, updateTicket } from "@/lib/ticket-store";
 import { updateTicketSchema, validateRequest } from "@/lib/validation";
 import { toPublicStatus } from "@/types/support-ticket";
 
+// Allow time for an AI retry on the fallback model (Vercel reads this limit).
+export const maxDuration = 60;
+
 type Context = { params: Promise<{ id: string }> };
 
 const notFound = () => errorResponse("NOT_FOUND", "We couldn't find a ticket with that number. Please check it and try again.", 404);
