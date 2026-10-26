@@ -4,6 +4,31 @@ A redesigned, animated landing page for Gokul Infocare with a Google Gemini supp
 
 > **Concept redesign.** This is not the official Gokul Infocare website and is not affiliated with or endorsed by Gokul Infocare. Content is rewritten from the public site [gokulinfocare.com](https://gokulinfocare.com). The company's logo and client logos are not used.
 
+## For reviewers: Gokul Infocare Task 1
+
+| | |
+| --- | --- |
+| **Domain** | Technology |
+| **Areas covered** | Website Development, Automation (AI ticket triage and resolution emails), Innovation (AI-first support workflow) |
+| **AI tools** | **Claude Code**: designed, built, tested and published the project from my prompts. **Google Gemini**: powers the chatbot and the ticket triage inside the app |
+| **Prompt documentation** | [PROMPT_DOCUMENTATION.md](PROMPT_DOCUMENTATION.md): every prompt I used, the revisions and why, the prompts inside the app, and live test results |
+
+**Quickest way to review**
+1. **Watch the demo video** (link in the submission email). It shows the full flow: chatbot → ticket → admin board → resolution email.
+2. **Read the code:** start with [src/lib/chat-prompt.ts](src/lib/chat-prompt.ts) and [src/lib/prompt.ts](src/lib/prompt.ts) (the AI prompts), then [src/lib/gemini.ts](src/lib/gemini.ts) (how Gemini is called and validated).
+3. **Run it yourself** (about 5 minutes; you need Node.js 20+ and a free Gemini key from [Google AI Studio](https://aistudio.google.com/apikey)):
+   ```powershell
+   git clone https://github.com/Sakthi0208-code/Gokul-infotech.git
+   cd Gokul-infotech
+   npm install
+   copy .env.example .env.local   # then set GEMINI_API_KEY and choose your own ADMIN_ACCESS_CODE
+   npm run dev                    # open http://localhost:3000
+   ```
+   - **Customer view:** click **Need help?**, pick a common issue, then choose "No, still not working" twice and create a ticket.
+   - **Admin view:** in the chat, type `admin` and enter the `ADMIN_ACCESS_CODE` you chose. The dashboard at `/admin` shows the ticket.
+   - Resolution emails are optional (SMTP settings in `.env.local`). Without them, the app clearly says email isn't set up.
+4. **Run the tests** (no API key needed; Gemini and email are mocked): `npm test` runs 144 tests.
+
 ## What it does
 
 | Part | Where | What it does |

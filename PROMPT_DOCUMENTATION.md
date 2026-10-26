@@ -1,17 +1,28 @@
 # Prompt Documentation
 
-This document records the prompts used to build the AI Support Ticket Assistant and the prompt that runs inside the app. It separates what was **actually used** from what is **suggested but not yet used**.
+This document lists **all the prompts used** to build this project with AI, the significant revisions and follow-up prompts, and the prompts that run inside the app. It separates what was **actually used** from what is only **suggested**.
+
+**At a glance**
+- **AI tools:** Claude Code (coding agent, used to design, build, test and publish) and Google Gemini (the AI inside the product).
+- **Prompts given to Claude Code:** 23, from one detailed master prompt to short follow-ups, all quoted in section 3.4.
+- **Prompts inside the app:** a triage prompt (section 4) and a chatbot prompt (section 4b), both refined through testing (section 5).
+- **How the project evolved:** a ticket-triage tool → a Gokul Infocare website with an AI chatbot → AI-created support tickets with an admin board, email resolution and secure admin access.
 
 ## 1. Project objective
 
-Build a web app where a support agent pastes a customer ticket and Google Gemini returns a category, priority, sentiment, summary, suggested reply, recommended action and priority reason, as validated structured JSON.
+Help a support team handle customer issues faster with AI, as a concept for Gokul Infocare (technology domain):
+- **Customers** describe a problem to a Gemini chatbot on the website and get step-by-step fixes on screen.
+- If the AI can't solve it, the chatbot **creates a support ticket** that Gemini has already triaged: category, priority, sentiment, summary, recommended action and a draft reply.
+- **Admins** (who sign in by typing a secret code into the chatbot) work through the tickets on a New / In progress / Solved board. When a ticket is solved, the customer is **emailed the resolution**.
+
+The original core, kept as the "Triage tool", analyses any pasted ticket and returns those seven fields as validated structured JSON.
 
 ## 2. AI tools used and their roles
 
-| Tool | Role | Status |
+| Tool | Role | Why this tool |
 | --- | --- | --- |
-| **Claude Code** (Anthropic, model Claude Opus 5.5) in VS Code | Coding agent: scaffolded the project, wrote the code, tests and docs, ran lint, type check, tests and build | Used |
-| **Google Gemini API** (`gemini-3.5-flash-lite` by default) | The AI inside the app: chatbot replies, ticket triage and escalation triage | Tested live on 2026-10-25 (see section 6.1) |
+| **Claude Code** (Anthropic, model Claude Opus 5.5) in VS Code | Coding agent: planned the work, wrote the code, tests and docs, ran lint, type checks, tests and builds, checked the UI in a real browser, and published to GitHub | It works directly inside the project. It edits files, runs commands and tests, and checks the results, rather than only suggesting code to copy. That made it possible to iterate quickly from short follow-up prompts. |
+| **Google Gemini API** (`gemini-3.5-flash-lite`) | The AI inside the product: chatbot replies, ticket triage, and the triage behind every support ticket | Free tier with an official SDK, and it supports structured JSON output (a response schema), which makes AI answers reliable enough to validate and use in an app. Tested live; see sections 5 and 6.1. |
 
 ## 3. Development prompts (actually used)
 
@@ -53,22 +64,54 @@ Claude Code judged the plan sound and followed it, with these changes to the pla
 | Added a `ticket-assistant.tsx` component | `page.tsx` stays a simple server component, and all interactive state lives in one client component. |
 | Minimum ticket length of 10 characters | Inputs like "help" cannot be triaged meaningfully and waste quota. |
 
-### 3.4 Follow-up prompts (used, quoted exactly)
+### 3.4 Complete prompt log (every prompt, quoted exactly)
 
-| Date | Prompt | What happened |
+Every prompt given to Claude Code, in order, quoted exactly as typed (spelling unchanged). "Choice" entries are answers the author gave when Claude Code asked a multiple-choice question. Screenshots attached to a prompt are noted in brackets.
+
+**Phase 1: build the core triage app (2026-10-24)**
+
+| # | Prompt | What it led to |
 | --- | --- | --- |
-| 2026-10-24 | "in envLocal suggest me gemini model in free tire" | Recommended `gemini-3.8-flash`, with `gemini-3.5-flash-lite` as the fallback. |
-| 2026-10-25 | "no i need to test how the agent works ?" | Claude Code sent the example tickets to the running app. All failed, which led to the model diagnosis in refinement 10. |
-| 2026-10-25 | "no give me the steps i need to test this manually, loke how the website works and how we get response everything" | Claude Code wrote a manual test plan (examples, validation, error cases, DevTools Network tab). |
-| 2026-10-25 | "https://gokulinfocare.com i need to change the website like a home sreen like this website and in the website i need a assistance chat bot and the bot need to give the resolution on the screen if the error cant get resolves by the ai that can generate a support mail to the admin. is this the right way to get into this company ? if thats good change the entire project delete and create the essential files" | See below. |
+| P1 | The master prompt (full text in Appendix A), followed by: "if the plan is correct and suits us go or else better plan is available give me the best plan in your recomendation we move on to that" | Claude Code kept the plan, added Zod validation and Vitest tests, and built the triage app, tests and docs. |
+| P2 | "in envLocal suggest me gemini model in free tire" | Recommended a free-tier model (`gemini-3.8-flash`, fallback `gemini-3.5-flash-lite`). |
+| P3 | "terminal struck here take a look buddy" [screenshot of `npm run dev` output] | Explained that the dev server was running normally and how to open it. |
 
-| 2026-10-25 | "yeah its a good start i need a landing page for the gokulinfocare make a landing page for them like same content and more attractive ui and there a chat assistance bot need to be there for admin a unique code need to enter in the chat bot to get into the assistance dashboard make the ui better and animative" | See "Landing page and admin access" below. |
+**Phase 2: test with real AI and fix the model (2026-10-25)**
 
-| 2026-10-25 | "the email not sent now change the idea done use email concerpt like the issue is unsolved make the ai to create the ticket and the person ca see the ticket in the admin page and gets solved" | Replaced email escalation with AI-created support tickets, an admin tickets board and customer status checks. See "Ticket system" below. |
+| # | Prompt | What it led to |
+| --- | --- | --- |
+| P4 | "whats next it running good in the browser" | Next-step plan: record test results, commit, publish, record video. |
+| P5 | "no i need to test how the agent works ?" | Live test of 7 tickets. All failed, the model was diagnosed, and the default changed to `gemini-3.5-flash-lite` (refinement 10). |
+| P6 | "no give me the steps i need to test this manually, loke how the website works and how we get response everything" | Step-by-step manual test plan, including how to inspect requests in DevTools. |
 
-| 2026-10-25 | "now the admin works correct make a email to the user when the ticket is solved with the note of the developer and make authentication to admin to block unauthorised login by /admin if the admin type the code on the chat bot they allowed to /adimn" | Added resolution emails over SMTP and a server-side session check on the /admin page itself, plus a stricter session cookie. See "Resolution email and admin lock" below. |
+**Phase 3: grow it into a website with an AI chatbot (2026-10-25)**
 
-| 2026-10-25 | "we got one issue in admin portel and make catogery on the admin page like new ticket in progress solved and give more options error possibilities in the chat bot" (with a screenshot of a Next.js "unstable value Date.now()" error on /admin) | Fixed the /admin error, turned the tickets list into New / In progress / Solved columns, and added a 12-item "Common issues" menu to the chatbot. |
+| # | Prompt | What it led to |
+| --- | --- | --- |
+| P7 | "https://gokulinfocare.com i need to change the website like a home sreen like this website and in the website i need a assistance chat bot and the bot need to give the resolution on the screen if the error cant get resolves by the ai that can generate a support mail to the admin is this the right way to get into this company ? if thats good change the entire project delete and create the essential files" | Claude Code advised against copying the site or deleting the triage engine, and proposed extending the project. |
+| P7a | Choice: "Draft + open in mail app (Recommended)" · "Yes, go ahead (Recommended)" | Built the homepage, the chatbot (`/api/chat`) and email escalation, and moved the triage tool to its own page. |
+| P8 | "yeah its a good start i need a landing page for the gokulinfocare make a landing page for them like same content and more attractive ui and there a chat assistance bot need to be there for admin a unique code need to enter in the chat bot to get into the assistance dashboard make the ui better and animative" | Animated Gokul Infocare landing page (content from the public site), admin login by typing "admin" plus a secret code in the chatbot, and the `/admin` dashboard. |
+| P9 | "the values are only in the env example not in the local env" | Added the admin settings to `.env.local` with a generated access code and session secret. |
+| P10 | "the email not sent now change the idea done use email concerpt like the issue is unsolved make the ai to create the ticket and the person ca see the ticket in the admin page and gets solved" [screenshot of the email draft and a console error] | Replaced emails with AI-created support tickets (`GI-XXXXXX`), an admin tickets board, and `status GI-…` checks in the chat (refinements 16–17). |
+| P11 | "now the admin works correct make a email to the user when the ticket is solved with the note of the developer and make authentication to admin to block unauthorised login by /admin if the admin type the code on the chat bot they allowed to /adimn" | Resolution email over SMTP and three locks on `/admin` (proxy redirect, server-side page check, API checks). |
+| P12 | "we got one issue in admin portel and make catogery on the admin page like new ticket in progress solved and give more options error possibilities in the chat bot" [screenshot of a Next.js "unstable value Date.now()" error] | Fixed the error (refinement 18), added New / In progress / Solved columns with drag and drop, and a 12-item "Common issues" menu (refinement 19). |
+
+**Phase 4: clean-up and publishing (2026-10-25 to 2026-10-26)**
+
+| # | Prompt | What it led to |
+| --- | --- | --- |
+| P13 | "now every thing is working properly so check the entire project and delete the unused or unvanted file check on everyfile and every method or function that is written in the project like all files you need to check" | Audit of every file and export. Unused functions and stale comments removed. |
+| P14 | "again for the last time delete all the unused and unwanted files in our project and delete the unused functions now" | Second, stricter audit (dependencies, private functions, styles). Only a cache file was left to remove. |
+| P15 | "commit" | Secret scan, then the first project commit. |
+| P16 | "https://github.com/Sakthi0208-code/Gokul_infocare.git" | Pushed to GitHub. |
+| P17 | "i need to change my mail in github like change the contributer mailid not only to this particualr project i need to change for all further projects the mail is sakthimahenthar23#gmail.com" | Updated the Git author email for all projects and for this project's commits. |
+| P18 | "my email already there" [screenshot of GitHub email settings] | Confirmed the GitHub email settings were correct. |
+| P19 | "fine then whats next ?" | Submission plan. |
+| P20 | "give me how to speek the content on the presentation video" · "give me one straight paragraph" | Speaking guide and a one-paragraph video script (kept outside the repository). |
+| P21 | "in the project i prompt docuentation, video presentation, submittion checklist are unwanted to the hr how validates so like that check there if any other project files like that and remove them" [screenshot of the GitHub file list] | Removed internal notes from the repository and recorded the live evaluation in section 5. |
+| P21a | Choice: "i need to remove the unwanted files for the reviewre" | Kept this document, because the assessment requires it. |
+| P22 | "its still there" [screenshot of GitHub] · "sorry for that i deleted the existing repo and created a new repo https://github.com/Sakthi0208-code/Gokul-infotech.git make a care full commit and push here" | Published the cleaned project to the new repository after a full-history secret scan. |
+| P23 | "is the prompt document required for the assesment ?" · "analise and push the essentials" [the assessment brief PDF] | Checked the project against the brief: completed this prompt log and added a reviewer guide to the README. |
 
 **How the redesign request was refined.** Claude Code reviewed the Gokul Infocare site first. It recommended against copying the site, because the site carries the company's logo and client trademarks, and against deleting the project, because the triage engine is the assessment's core requirement. The author chose:
 - an **original homepage inspired by** the company's services, labelled as a concept demo,
