@@ -13,16 +13,23 @@ import { RESPONSE_JSON_SCHEMA, SYSTEM_INSTRUCTION, buildUserPrompt } from "./pro
 import { parseChatReply, parseModelOutput } from "./validation";
 
 // Free-tier models, checked against https://ai.google.dev/gemini-api/docs/pricing.
-// The main model was tested live on 2026-10-25. If it is busy or fails, the
-// request is tried once more on the fallback model (free-tier quotas are per
-// model, so this also helps when one model's limit is reached).
+// Chosen by live measurement on 2026-10-26 with a free key: gemini-3-flash-preview
+// answered 5 of 5 requests in 2.5-4.3 s, while gemini-3.1-flash-lite answered
+// 1 of 5 and other free models (3.5-flash-lite, 3.6/3.7/3.8-flash, Gemma 4)
+// timed out or returned "high demand" 503s. If Google retires the preview
+// model, requests simply move to the fallback model.
+// The free tier is often congested ("high demand" 503s that clear within
+// seconds), so a request is retried: main → fallback → main → fallback, until
+// one answers or the time budget runs out. Free-tier quotas are per model, so
+// switching models also helps when one model's limit is reached.
 // Override with GEMINI_MODEL / GEMINI_FALLBACK_MODEL (set it to "none" to disable).
-export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+export const DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview";
 export const DEFAULT_FALLBACK_MODEL = "gemini-3.1-flash-lite";
-// Both attempts together must fit inside the 60-second limit of the API routes.
-// The main model normally answers in 3-8 s, so it gets 15 s before we switch.
-const MAIN_TIMEOUT_MS = 15_000;
-const FALLBACK_TIMEOUT_MS = 25_000;
+// All attempts together must fit inside the 60-second limit of the API routes.
+const TOTAL_BUDGET_MS = 50_000;
+const ATTEMPT_TIMEOUT_MS = 20_000; // one slow attempt can't use the whole budget
+const MIN_ATTEMPT_MS = 5_000; // don't start an attempt that can't finish
+const RETRY_PAUSE_MS = 300;
 
 /** An error that is safe to show to the user. `message` never contains secrets. */
 export class AnalysisError extends Error {
@@ -58,8 +65,8 @@ interface StructuredRequest<T> {
 }
 
 // Shared by every feature: sends a request that must come back as JSON,
-// validates it, and retries once on the fallback model if the main model
-// fails for a temporary reason. Every failure becomes a safe AnalysisError.
+// validates it, and retries temporary failures (see above). Every failure
+// becomes a safe AnalysisError.
 async function generateStructured<T>(request: StructuredRequest<T>): Promise<{ value: T; model: string }> {
   const { apiKey, model, fallback } = getGeminiConfig();
   if (!apiKey) {
@@ -71,17 +78,24 @@ async function generateStructured<T>(request: StructuredRequest<T>): Promise<{ v
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  try {
-    return await attempt(ai, apiKey, model, request, MAIN_TIMEOUT_MS);
-  } catch (error) {
-    if (!(error instanceof AnalysisError) || NOT_RETRYABLE.has(error.code) || !fallback) throw error;
-    console.warn(`[gemini] Main model failed (${error.code}); trying fallback model`);
+  const plan = fallback ? [model, fallback, model, fallback] : [model, model];
+  const deadline = Date.now() + TOTAL_BUDGET_MS;
+  let firstError: AnalysisError | undefined;
+
+  for (let i = 0; i < plan.length; i++) {
+    const remaining = deadline - Date.now();
+    if (i > 0 && remaining < MIN_ATTEMPT_MS) break;
     try {
-      return await attempt(ai, apiKey, fallback, request, FALLBACK_TIMEOUT_MS);
-    } catch {
-      throw error; // report the main model's problem, which is the most useful one
+      return await attempt(ai, apiKey, plan[i], request, Math.min(ATTEMPT_TIMEOUT_MS, remaining));
+    } catch (error) {
+      if (!(error instanceof AnalysisError) || NOT_RETRYABLE.has(error.code)) throw error;
+      firstError ??= error;
+      console.warn(`[gemini] Attempt ${i + 1} on ${plan[i]} failed (${error.code})`);
+      await new Promise((r) => setTimeout(r, RETRY_PAUSE_MS));
     }
   }
+  // Report the main model's first problem, which is the most useful one.
+  throw firstError!;
 }
 
 async function attempt<T>(

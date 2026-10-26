@@ -27,7 +27,7 @@ A redesigned, animated landing page for Gokul Infocare with a Google Gemini supp
    - **Customer view:** click **Need help?**, pick a common issue, then choose "No, still not working" twice and create a ticket.
    - **Admin view:** in the chat, type `admin` and enter the `ADMIN_ACCESS_CODE` you chose. The dashboard at `/admin` shows the ticket.
    - Resolution emails are optional (SMTP settings in `.env.local`). Without them, the app clearly says email isn't set up.
-4. **Run the tests** (no API key needed; Gemini and email are mocked): `npm test` runs 121 tests.
+4. **Run the tests** (no API key needed; Gemini and email are mocked): `npm test` runs 123 tests.
 
 ## What it does
 
@@ -72,8 +72,8 @@ A redesigned, animated landing page for Gokul Infocare with a Google Gemini supp
 - Structured JSON output (JSON Schema), validated again with Zod.
 - Clear handling of a missing key, invalid key, unknown model, rate limits, timeouts and malformed output.
 - Prompt-injection protection: customer text is wrapped in delimiter tags and treated as untrusted data.
-- **Resilient AI calls:** if the main Gemini model is busy (for example a 503 "overloaded" error), times out or returns a broken answer, the request is retried once on a backup free model.
-- 121 automated tests with Gemini, email and the database mocked.
+- **Resilient AI calls:** Gemini's free tier is sometimes busy ("high demand" 503 errors) or slow. Each request is retried main → backup → main → backup, within a 50-second budget, until one answers. A rejected API key is never retried.
+- 123 automated tests with Gemini, email and the database mocked.
 
 ## Architecture
 
@@ -131,7 +131,7 @@ tests/                        Vitest tests
 
 Next.js 16 (App Router), React 19, TypeScript 5, Tailwind CSS 4, `@google/genai` 2.31 (official Gemini SDK), Zod 4, nodemailer 10.1.7 (SMTP email), and Vitest with React Testing Library.
 
-Default model: **`gemini-3.5-flash-lite`** (free tier, tested live on 2026-10-25). `gemini-3.8-flash` is also free tier but timed out in testing.
+Default model: **`gemini-3-flash-preview`**, with `gemini-3.1-flash-lite` as the backup. Both are free tier. On 2026-10-26, with a free key, 3-flash-preview answered 5 of 5 requests in 2.5–4.3 seconds, while the newer free models were often "high demand" (503) or timed out.
 
 ## Setup on Windows
 
@@ -148,8 +148,8 @@ Fill in `.env.local`:
 | Name | Required | Description |
 | --- | --- | --- |
 | `GEMINI_API_KEY` | Yes | From [Google AI Studio](https://aistudio.google.com/apikey). Server-only. |
-| `GEMINI_MODEL` | No | Defaults to `gemini-3.5-flash-lite`. |
-| `GEMINI_FALLBACK_MODEL` | No | Backup model tried once if the main one fails. Defaults to `gemini-3.1-flash-lite`; `none` turns it off. |
+| `GEMINI_MODEL` | No | Defaults to `gemini-3-flash-preview`. |
+| `GEMINI_FALLBACK_MODEL` | No | Backup model used when the main one is busy or fails. Defaults to `gemini-3.1-flash-lite`; `none` turns it off. |
 | `ADMIN_ACCESS_CODE` | For admin access | The secret code typed into the chatbot. Make it long, for example `GI-7f3k-Quartz-2026`. Leave empty to disable admin access. |
 | `ADMIN_SESSION_SECRET` | Recommended | A long random string for signing sessions. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | For resolution emails | SMTP server login. For Gmail: `smtp.gmail.com`, `465`, your Gmail address, and an **app password** (Google Account → Security → 2-Step Verification → App passwords). Never use your normal password. |

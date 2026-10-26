@@ -223,10 +223,31 @@ describe("fallback model", () => {
     await expectAnalysisError(analyzeTicket(TICKET), "GEMINI_ERROR", 502);
   });
 
-  it("can be disabled with GEMINI_FALLBACK_MODEL=none", async () => {
+  it("with GEMINI_FALLBACK_MODEL=none, retries only the main model", async () => {
     vi.stubEnv("GEMINI_FALLBACK_MODEL", "none");
     generateContent.mockRejectedValue(new ApiError({ message: "busy", status: 503 }));
     await expectAnalysisError(analyzeTicket(TICKET), "GEMINI_ERROR", 502);
-    expect(generateContent).toHaveBeenCalledTimes(1);
+    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual([DEFAULT_GEMINI_MODEL, DEFAULT_GEMINI_MODEL]);
+  });
+
+  it("keeps retrying while the free tier is busy: main, fallback, then main again", async () => {
+    const busy = new ApiError({ message: "This model is currently experiencing high demand", status: 503 });
+    generateContent
+      .mockRejectedValueOnce(busy)
+      .mockRejectedValueOnce(busy)
+      .mockResolvedValueOnce({ text: JSON.stringify(validAnalysis) });
+    const result = await analyzeTicket(TICKET);
+    expect(result.model).toBe(DEFAULT_GEMINI_MODEL);
+    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual([
+      DEFAULT_GEMINI_MODEL,
+      DEFAULT_FALLBACK_MODEL,
+      DEFAULT_GEMINI_MODEL,
+    ]);
+  });
+
+  it("stops after four attempts", async () => {
+    generateContent.mockRejectedValue(new ApiError({ message: "busy", status: 503 }));
+    await expectAnalysisError(analyzeTicket(TICKET), "GEMINI_ERROR", 502);
+    expect(generateContent).toHaveBeenCalledTimes(4);
   });
 });
