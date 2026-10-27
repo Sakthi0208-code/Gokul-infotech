@@ -4,6 +4,10 @@
 
 Built with **Claude Code** (AI coding agent) and **Google Gemini** (the AI inside the product) for the Gokul Infocare *AI Growth & Automation Associate* Task 1 assessment.
 
+### 🌐 Live demo: **[gokulinfotech.vercel.app](https://gokulinfotech.vercel.app/)**
+
+Open the site, click **Need help?**, and talk to the AI. See [Try it live](#try-it-live) for a two-minute tour.
+
 ![Landing page](docs/screenshots/01-landing.png)
 
 > **Concept redesign.** This is not the official Gokul Infocare website and is not affiliated with or endorsed by Gokul Infocare. Content is rewritten from the public site [gokulinfocare.com](https://gokulinfocare.com). The company's logo and client logos are not used.
@@ -12,6 +16,7 @@ Built with **Claude Code** (AI coding agent) and **Google Gemini** (the AI insid
 
 ## Contents
 
+- [Try it live](#try-it-live)
 1. [The problem and the idea](#1-the-problem-and-the-idea)
 2. [How it works, step by step](#2-how-it-works-step-by-step)
 3. [How AI is used](#3-how-ai-is-used)
@@ -24,6 +29,19 @@ Built with **Claude Code** (AI coding agent) and **Google Gemini** (the AI insid
 10. [Project structure and API](#10-project-structure-and-api)
 11. [Known limitations](#11-known-limitations)
 12. [Assessment summary](#12-assessment-summary)
+
+---
+
+## Try it live
+
+**[gokulinfotech.vercel.app](https://gokulinfotech.vercel.app/)** (hosted on Vercel, tickets stored in Supabase, AI by Google Gemini)
+
+1. **Ask the AI:** click **Need help?** (bottom right) and pick a common issue, e.g. *Fleet tracker offline*. Gemini replies with numbered fixes.
+2. **Escalate:** click **No, still not working** twice, then **Create support ticket**. Enter your email to receive the resolution. You get a ticket number like `GI-7K3M9Q`.
+3. **Check progress:** type `status GI-7K3M9Q` (your number) in the chat.
+4. **Admin side:** open a new chat, type `admin`, and enter the admin access code (shared privately in the submission email). The **Support tickets** board shows your ticket, already analysed by AI. Open it, write a note, and click **Mark solved**. The customer receives the email shown in Step 5 below.
+
+The AI runs on Google's free tier. If it's busy for a moment, the app retries automatically; click **Try again** if a reply ever fails.
 
 ---
 
@@ -269,4 +287,4 @@ Errors use `{ "error": { "code", "message" } }` with clear messages, for example
 | Area | **Website Development** + **Automation** (AI triage, ticketing, resolution emails) + **Innovation** (AI-first support workflow) |
 | AI tools play a meaningful role | Claude Code built it; Gemini powers the chatbot and triage ([section 3](#3-how-ai-is-used)) |
 | Prompt documentation | [PROMPT_DOCUMENTATION.md](PROMPT_DOCUMENTATION.md): all 27 prompts, revisions, in-app prompts, live test results |
-| Accessible project link | This repository, with run instructions in [section 5](#5-run-it-yourself) |
+| Accessible project link | **Live site:** [gokulinfotech.vercel.app](https://gokulinfotech.vercel.app/) · **Code:** this repository, with run instructions in [section 5](#5-run-it-yourself) |
