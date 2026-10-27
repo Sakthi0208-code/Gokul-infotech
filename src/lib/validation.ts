@@ -117,7 +117,8 @@ export const updateTicketSchema = z
 const chatReplySchema = z
   .object({
     message: text(1500),
-    steps: z.array(text(400)).max(6),
+    // The chat UI numbers the steps itself, so strip any "1." / "2)" the model adds.
+    steps: z.array(text(400).transform((step) => step.replace(/^\s*(?:step\s*)?\d+\s*[.):-]\s*/i, ""))).max(6),
     status: z.enum(CHAT_STATUSES),
     escalation_reason: z.string().trim().max(500),
   })

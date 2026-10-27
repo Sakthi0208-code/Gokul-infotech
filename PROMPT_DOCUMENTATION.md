@@ -4,7 +4,7 @@ This document lists **all the prompts used** to build this project with AI, the 
 
 **At a glance**
 - **AI tools:** Claude Code (coding agent, used to design, build, test and publish) and Google Gemini (the AI inside the product).
-- **Prompts given to Claude Code:** 25, from one detailed master prompt to short follow-ups, all quoted in section 3.4.
+- **Prompts given to Claude Code:** 27, from one detailed master prompt to short follow-ups, all quoted in section 3.4.
 - **Prompts inside the app:** a triage prompt (section 4) and a chatbot prompt (section 4b), both refined through testing (section 5).
 - **How the project evolved:** a ticket-triage tool → a Gokul Infocare website with an AI chatbot → AI-created support tickets with an admin board, email resolution and secure admin access.
 
@@ -115,6 +115,8 @@ Every prompt given to Claude Code, in order, quoted exactly as typed (spelling u
 | P24 | "i changed admin access code to [code removed for security] mention them in readme if needed" · "how to resolve the error and remove the Triage tool it looks like useless" [screenshots of Vercel logs (Gemini 503, tickets-create error) and the live site] | Kept the admin code out of the public README. Diagnosed both live errors: a temporary Gemini overload (fixed with a backup model, refinement 20) and Vercel's read-only file system (fixed with Supabase storage, refinement 21). Removed the Triage tool page (refinement 22). |
 | P24a | Choice: "create a new supabase project and with new id not grevya" | The connected Supabase account belongs to another organisation, so the author creates a new project in their own account using `supabase/schema.sql`. |
 | P25 | [screenshot only: the chatbot showing "Gemini did not respond within 15 seconds"] | Measured four free models with the author's key. Only `gemini-3.1-flash-lite` answered (3.0 s and 8.1 s); the others timed out or returned 503. Made it the main model, but a live chatbot test still failed or was slow, so the free models were measured again with JSON output. `gemini-3-flash-preview` answered 5 of 5 in 2.5–4.3 s and became the main model, with a retry loop (refinements 23–24). |
+| P26 | "setup this" [screenshot: "Email is not set up" on a solved ticket] | Confirmed the local Gmail login worked (checked without sending) and explained adding the SMTP settings on Vercel, then using **Send email** on the solved ticket. |
+| P27 | "iam decided not to send video proof so create a proper read me that tell aout our project and how to work with that i send you the ticket closed email to atach them and make them proper" [screenshot of the received resolution email] | Rewrote the README as a step-by-step walkthrough, with screenshots captured from the real app and the author's resolution email. Fixed the browser tab title, and fixed double step numbers found while taking the screenshots (refinement 25). |
 
 **How the redesign request was refined.** Claude Code reviewed the Gokul Infocare site first. It recommended against copying the site, because the site carries the company's logo and client trademarks, and against deleting the project, because the triage engine is the assessment's core requirement. The author chose:
 - an **original homepage inspired by** the company's services, labelled as a concept demo,
@@ -198,7 +200,9 @@ Analyze the following support ticket.
 - `temperature: 0.2` for consistent classification
 - 30-second timeout via `AbortController`
 
-## 4b. Chatbot system instruction (version 1.2)
+## 4b. Chatbot system instruction (version 1.3)
+
+Change in 1.3: the steps rule now says "in order… Do not number the steps; the website numbers them", because the chat showed double numbers (refinement 25).
 
 Change in 1.2: when escalating, the assistant now says it will *create a support ticket* (not prepare an email), and is told never to invent ticket numbers, because the website creates real tickets separately.
 
@@ -274,6 +278,7 @@ Rows 1 to 9 were design decisions made while writing the code, before any live c
 | 22 | Removed the stand-alone Triage tool (2026-10-26) | The same triage engine already analyses every chatbot ticket automatically, so the separate page added little for admins. |
 | 23 | Main model switched to `gemini-3.1-flash-lite`, backup `gemini-3.5-flash-lite` (2026-10-26) | Live measurement over two rounds: 3.1-flash-lite answered in 3.0 s and 8.1 s, while 3.5-flash-lite (the previous main), 3.6-flash and 3.8-flash timed out at 20 s or returned 503. Waiting on an unresponsive main model made customers see a timeout. The main model now gets 20 s before the backup is tried. |
 | 24 | Main model `gemini-3-flash-preview` and a retry loop (2026-10-26) | Google's free tier was congested ("This model is currently experiencing high demand"). Over 5 runs, 3-flash-preview answered 5/5 in 2.5–4.3 s and 3.1-flash-lite 1/5. Turning "thinking" off made no difference (the models used no thinking tokens). Requests now retry main → backup → main → backup within 50 s, and fast 503s move straight to the next attempt. Live chatbot test after the change: 5/5 replies in 4–8 s, compared with 3/5 in 39–50 s before. |
+| 25 | Chat steps are not numbered by the AI (2026-10-27) | While capturing README screenshots, the chat showed "1  1. Check…": Gemini numbered its steps and the chat added its own numbers. The prompt now tells the model not to number steps, and validation strips any leading "1.", "2)" or "Step 3:" as a safety net, so the display is right even if the model ignores the rule. |
 
 ### Prompt evaluation (live, 2026-10-26, `gemini-3.5-flash-lite`)
 
@@ -316,6 +321,7 @@ Results:
 - 2026-10-25, after adding the chatbot: 8 test files, **93 passed**, 0 failed.
 - 2026-10-25, after the landing page and admin access: 9 test files, **112 passed**, 0 failed. New: `tests/admin-auth.test.ts` (code check, token signing, expiry, tampering, login and lockout, logout, proxy redirect, code never forwarded to the chat AI) and admin-mode UI tests in `tests/chat-widget.test.tsx`.
 - 2026-10-25, after replacing emails with tickets: 10 test files, **123 passed**, 0 failed. New: `tests/tickets.test.ts` (storage, unique IDs, concurrent creation, ordering, create/status/list/update routes, admin-only access, resolution note required, public status hides transcript and contact details) and `tests/tickets-board.test.tsx` (load, filter, resolve, use AI reply, expired session).
+- 2026-10-27, after the step-numbering fix: 11 test files, **124 passed**, 0 failed (new test: numbering added by the AI is removed). README screenshots were captured from the real app with real Gemini and Supabase. The demo ticket was deleted afterwards.
 - 2026-10-26, after removing the Triage tool and adding the backup model and Supabase storage: 10 test files, **121 passed**, 0 failed. New tests: fallback on 503, timeout and invalid output; no retry on a bad key; fallback can be turned off; Supabase create/read/list/update (with a fake Supabase API); storage failures return a safe 503. Fewer tests than before because the Triage tool's own tests were removed with it.
 - 2026-10-25, after the board, chat topics and the /admin fix: 12 test files, **144 passed**, 0 failed. The board tests cover columns, search, priority filter, Start, drag to Solved (opens the note instead of solving), solve with email result, and Esc to close. The chat tests cover the topic grid, "More issues", and the menu button. The fix was checked on the dev server: `/admin` loads with no error overlay.
 - 2026-10-25, after resolution emails and the admin lock: 12 test files, **139 passed**, 0 failed. New: `tests/mailer.test.ts` (config, template, HTML escaping, send/skip/fail, password never in messages, email on resolve exactly once, failure still resolves, re-send, admin-only) and `tests/admin-gate.test.tsx` (no, forged, expired or unconfigured session → redirect; valid → render).

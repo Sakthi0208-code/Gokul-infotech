@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Support Desk · IT Solutions Concept",
-  description: "Concept IT services website with a Google Gemini support chatbot, escalation emails and an agent triage dashboard.",
+  title: "Gokul Infocare · AI Support (Concept)",
+  description: "Concept redesign of the Gokul Infocare website with a Google Gemini support chatbot that solves issues, raises AI-triaged tickets and emails customers the resolution.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

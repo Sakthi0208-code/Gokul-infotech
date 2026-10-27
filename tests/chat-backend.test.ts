@@ -130,3 +130,12 @@ describe("POST /api/chat", () => {
     expect(JSON.stringify(await res.json())).not.toContain("secret internal detail");
   });
 });
+
+describe("chat reply steps", () => {
+  it("removes numbering the AI adds, because the chat shows its own numbers", () => {
+    const result = parseChatReply(
+      JSON.stringify({ ...reply, steps: ["1. Check the power.", "2) Restart it.", "Step 3: Wait 5 minutes.", "Call the 24/7 line"] }),
+    );
+    expect(result.ok && result.value.steps).toEqual(["Check the power.", "Restart it.", "Wait 5 minutes.", "Call the 24/7 line"]);
+  });
+});
